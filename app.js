@@ -1,10 +1,17 @@
 require('./jwt/generateKey');
 const express = require('express');
+const cors = require('cors');
 const app = express();
 const authRoutes = require('./routes/authRoutes');
 const db = require('./database/db');
 db.connect();
 
+const corsOptions = {
+    origin: 'https://jinjigo.vercel.app',
+    optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 app.get('/', (req, res) => {
