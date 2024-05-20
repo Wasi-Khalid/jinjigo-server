@@ -85,8 +85,8 @@ app.get('/auth/google',
 app.get('/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/' }),
     (req, res) => {
-        const token = req.user.token;
-        res.redirect('https://jinjigo.vercel.app'); // Redirect to your React app
+        const token = req.user.token; // Ensure the token is available in req.user.token
+        res.redirect(`https://jinjigo.vercel.app?token=${token}`);
     });
 
 app.get('/logout', (req, res) => {
