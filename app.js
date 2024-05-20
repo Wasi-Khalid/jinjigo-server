@@ -20,7 +20,7 @@ passport.use(new GoogleStrategy({
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: process.env.NODE_ENV === 'production'
         ? 'https://jinjigo-server.onrender.com/auth/google/callback'
-        : 'http://localhost:3000/auth/google/callback',
+        : 'http://localhost:5174/auth/google/callback',
 }, async (token, tokenSecret, profile, done) => {
     try {
         let user = await User.findOne({ googleId: profile.id });
