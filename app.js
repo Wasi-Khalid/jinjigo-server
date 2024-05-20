@@ -5,6 +5,7 @@ const cors = require('cors');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
+const jwt = require('jsonwebtoken');
 const authRoutes = require('./routes/authRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
 const db = require('./database/db');
@@ -41,23 +42,19 @@ passport.use(new GoogleStrategy({
             await user.save();
         }
 
-        return done(null, user);
+        const jwtToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        return done(null, { token: jwtToken });
     } catch (err) {
         return done(err, null);
     }
 }));
 
 passport.serializeUser((user, done) => {
-    done(null, user.id);
+    done(null, user);
 });
 
-passport.deserializeUser(async (id, done) => {
-    try {
-        const user = await User.findById(id);
-        done(null, user);
-    } catch (err) {
-        done(err, null);
-    }
+passport.deserializeUser((user, done) => {
+    done(null, user);
 });
 
 // Middleware setup
