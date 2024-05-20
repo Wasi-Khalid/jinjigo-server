@@ -15,12 +15,13 @@ db.connect();
 
 const app = express();
 
+// Set up passport to use Google OAuth
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: process.env.NODE_ENV === 'production'
         ? 'https://jinjigo-server.onrender.com/auth/google/callback'
-        : 'http://localhost:5174/auth/google/callback',
+        : 'http://localhost:3000/auth/google/callback',
 }, async (token, tokenSecret, profile, done) => {
     try {
         let user = await User.findOne({ googleId: profile.id });
@@ -59,11 +60,13 @@ passport.deserializeUser(async (id, done) => {
     }
 });
 
+// Middleware setup
 app.use(cors({ origin: process.env.CORS_ORIGIN, optionsSuccessStatus: 200 }));
 app.use(express.json());
 app.use(cookieSession({
     name: 'session',
     keys: ['key1', 'key2'],
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
 }));
 app.use(passport.initialize());
 app.use(passport.session());
@@ -81,7 +84,7 @@ app.get('/auth/google',
 app.get('/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/' }),
     (req, res) => {
-        res.redirect('https://jinjigo.vercel.app');
+        res.redirect('https://jinjigo.vercel.app'); // Redirect to your React app
     });
 
 app.get('/logout', (req, res) => {
