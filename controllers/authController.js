@@ -82,7 +82,7 @@ const loginWithGoogle = (req, res, next) => {
 
 const googleCallback = (req, res) => {
     const token = req.user.token;
-    res.json({ token });
+    res.redirect(`http://localhost:5174/google/callback?token=${token}`);
 };
 
 const logout = (req, res) => {
