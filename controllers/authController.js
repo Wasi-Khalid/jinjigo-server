@@ -82,7 +82,7 @@ const loginWithGoogle = (req, res, next) => {
 
 const googleCallback = (req, res) => {
     const token = req.user.token;
-    res.redirect(`https://jinjigo.vercel.app?token=${token}`);
+    res.json({ token });
 };
 
 const logout = (req, res) => {
