@@ -2,47 +2,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const User = require('../models/User');
 const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
-
-passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.NODE_ENV === 'production'
-        ? 'https://jinjigo-server.onrender.com/auth/google/callback'
-        : 'http://localhost:3000/auth/google/callback',
-}, async (token, tokenSecret, profile, done) => {
-    try {
-        let user = await User.findOne({ googleId: profile.id });
-
-        if (!user) {
-            user = new User({
-                googleId: profile.id,
-                username: profile.displayName,
-                email: profile.emails[0].value,
-                accessToken: token,
-                refreshToken: tokenSecret,
-            });
-            await user.save();
-        } else {
-            user.accessToken = token;
-            user.refreshToken = tokenSecret;
-            await user.save();
-        }
-
-        const jwtToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        return done(null, { token: jwtToken, ...user.toObject() });
-    } catch (err) {
-        return done(err, null);
-    }
-}));
-
-passport.serializeUser((user, done) => {
-    done(null, user);
-});
-
-passport.deserializeUser((user, done) => {
-    done(null, user);
-});
+const { OAuth2Client } = require('google-auth-library');
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 async function signup(req, res) {
     try {
@@ -92,4 +53,26 @@ const logout = (req, res) => {
     });
 };
 
-module.exports = { signup, login, loginWithGoogle, googleCallback, logout };
+const validateGoogleToken = async (req, res) => {
+    const { token } = req.body;
+    try {
+        const ticket = await client.verifyIdToken({
+            idToken: token,
+            audience: process.env.GOOGLE_CLIENT_ID,
+        });
+        const payload = ticket.getPayload();
+        const user = await User.findOne({ googleId: payload.sub });
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const jwtToken = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        res.json({ token: jwtToken, user });
+    } catch (error) {
+        console.error('Error validating Google token:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
+module.exports = { signup, login, loginWithGoogle, googleCallback, logout, validateGoogleToken };

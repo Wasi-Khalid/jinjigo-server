@@ -8,5 +8,6 @@ router.post('/login', authController.login);
 router.get('/google', authController.loginWithGoogle);
 router.get('/google/callback', passport.authenticate('google', { failureRedirect: '/' }), authController.googleCallback);
 router.get('/logout', authController.logout);
+router.post('/validate-google-token', authController.validateGoogleToken);
 
 module.exports = router;
