@@ -75,4 +75,5 @@ const validateGoogleToken = async (req, res) => {
     }
 };
 
+
 module.exports = { signup, login, loginWithGoogle, googleCallback, logout, validateGoogleToken };
