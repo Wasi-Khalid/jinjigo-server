@@ -8,15 +8,18 @@ const authRoutes = require('./routes/authRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
 const db = require('./database/db');
 
+// Connect to the database
 db.connect();
 
 const app = express();
 
+// CORS configuration
 app.use(cors({
-    origin: ['https://jinjigo.vercel.app', 'http://localhost:5174', 'https://accounts.google.com'],
+    origin: ['https://jinjigo.vercel.app', 'http://localhost:5174'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
 }));
+
 app.use(express.json());
 app.use(session({
     secret: process.env.JWT_SECRET,
