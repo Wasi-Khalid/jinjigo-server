@@ -13,10 +13,9 @@ db.connect();
 const app = express();
 
 app.use(cors({
-    origin: process.env.CORS_ORIGIN,
-    methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+    origin: ['https://jinjigo.vercel.app', 'http://localhost:5174'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
-    optionsSuccessStatus: 204
 }));
 app.use(express.json());
 app.use(session({
