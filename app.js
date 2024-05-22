@@ -1,5 +1,4 @@
 require('dotenv').config(); // Load environment variables
-require('./jwt/generateKey');
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
@@ -9,14 +8,14 @@ const calendarRoutes = require('./routes/calendarRoutes');
 const db = require('./database/db');
 
 // Initialize and configure Passport
-require('./config/passport'); // <-- Add this line to include passport configuration
+require('./config/passport');
 
 db.connect();
 
 const app = express();
 
 app.use(cors({
-    origin: ['https://jinjigo.vercel.app', 'http://localhost:5174', 'https://accounts.google.com'],
+    origin: ['https://jinjigo.vercel.app', 'http://localhost:5174'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
 }));
