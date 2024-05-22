@@ -13,7 +13,7 @@ db.connect();
 const app = express();
 
 app.use(cors({
-    origin: ['https://jinjigo.vercel.app', 'http://localhost:5174'],
+    origin: ['https://jinjigo.vercel.app', 'http://localhost:5174', 'https://accounts.google.com'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
 }));
