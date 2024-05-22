@@ -12,13 +12,18 @@ db.connect();
 
 const app = express();
 
-app.use(cors({ origin: process.env.CORS_ORIGIN, optionsSuccessStatus: 200 }));
+app.use(cors({
+    origin: process.env.CORS_ORIGIN,
+    methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+    credentials: true,
+    optionsSuccessStatus: 204
+}));
 app.use(express.json());
 app.use(session({
     secret: process.env.JWT_SECRET,
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: false }
+    cookie: { secure: process.env.NODE_ENV === 'production' }
 }));
 app.use(passport.initialize());
 app.use(passport.session());
