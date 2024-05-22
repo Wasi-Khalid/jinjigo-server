@@ -43,8 +43,17 @@ const loginWithGoogle = (req, res, next) => {
     passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
 };
 
-const googleCallback = (req, res) => {
-    res.redirect('http://localhost:5174/dashboard');
+const googleCallback = async (req, res) => {
+    const user = req.user;
+    const token = await new Promise((resolve, reject) => {
+        req.login(user, (err) => {
+            if (err) {
+                reject(err);
+            }
+            resolve(user._id);
+        });
+    });
+    res.redirect(`http://localhost:5174/login?token=${token}`);
 };
 
 const logout = (req, res) => {
@@ -57,33 +66,13 @@ const logout = (req, res) => {
 const authenticateUserWithToken = async (req, res) => {
     const { token } = req.body;
     try {
-        const ticket = await client.verifyIdToken({
-            idToken: token,
-            audience: process.env.GOOGLE_CLIENT_ID,
-        });
-
-        const payload = ticket.getPayload();
-        const googleId = payload.sub;
-
-        let user = await User.findOne({ googleId });
-
+        const user = await User.findById(token);
         if (!user) {
-            user = new User({
-                googleId: payload.sub,
-                username: payload.name,
-                email: payload.email,
-            });
-            await user.save();
+            return res.status(401).json({ error: 'Invalid token' });
         }
-
-        req.login(user, (err) => {
-            if (err) {
-                return res.status(500).json({ error: 'Internal Server Error' });
-            }
-            res.json({ user: { _id: user._id, username: user.username, email: user.email } });
-        });
+        res.json({ user: { _id: user._id, username: user.username, email: user.email } });
     } catch (error) {
-        console.error('Error validating Google token:', error);
+        console.error('Error validating token:', error);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 };
