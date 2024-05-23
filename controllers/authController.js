@@ -1,15 +1,21 @@
 const bcrypt = require('bcrypt');
 const User = require('../models/User');
 const passport = require('passport');
+const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+const generateToken = (user) => {
+    return jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+};
 
 async function signup(req, res) {
     try {
         const { username, email, password } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = await User.create({ username, email, password: hashedPassword });
-        res.json({ user: { _id: user._id, username: user.username, email: user.email } });
+        const token = generateToken(user);
+        res.json({ token, user: { _id: user._id, username: user.username, email: user.email } });
     } catch (error) {
         console.error('Error signing up:', error);
         res.status(500).json({ error: 'Internal Server Error' });
@@ -27,12 +33,8 @@ async function login(req, res) {
         if (!passwordMatch) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
-        req.login(user, (err) => {
-            if (err) {
-                return res.status(500).json({ error: 'Internal Server Error' });
-            }
-            res.json({ user: { _id: user._id, username: user.username, email: user.email } });
-        });
+        const token = generateToken(user);
+        res.json({ token, user: { _id: user._id, username: user.username, email: user.email } });
     } catch (error) {
         console.error('Error logging in:', error);
         res.status(500).json({ error: 'Internal Server Error' });
@@ -45,14 +47,7 @@ const loginWithGoogle = (req, res, next) => {
 
 const googleCallback = async (req, res) => {
     const user = req.user;
-    const token = await new Promise((resolve, reject) => {
-        req.login(user, (err) => {
-            if (err) {
-                reject(err);
-            }
-            resolve(user._id);
-        });
-    });
+    const token = generateToken(user);
     res.redirect(`http://localhost:5174/login?token=${token}`);
 };
 
@@ -66,11 +61,12 @@ const logout = (req, res) => {
 const authenticateUserWithToken = async (req, res) => {
     const { token } = req.body;
     try {
-        const user = await User.findById(token);
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.userId);
         if (!user) {
             return res.status(401).json({ error: 'Invalid token' });
         }
-        res.json({ user: { _id: user._id, username: user.username, email: user.email } });
+        res.json({user});
     } catch (error) {
         console.error('Error validating token:', error);
         res.status(500).json({ error: 'Internal Server Error' });
