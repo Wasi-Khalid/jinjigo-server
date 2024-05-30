@@ -144,7 +144,112 @@ const scheduleInterview = async (req, res) => {
     }
 };
 
+const getInterviewsByUser = async (req, res) => {
+    const { userId } = req.params;
+
+    try {
+        const interviews = await Interview.find({ scheduledBy: userId }).populate('hr', 'username email');
+        res.status(200).json({InterviewList: interviews});
+    } catch (error) {
+        console.error('Error fetching interviews:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
+const rescheduleInterview = async (req, res) => {
+    const { interviewId } = req.params;
+    const { startTime, endTime, summary, description } = req.body;
+
+    try {
+        const interview = await Interview.findById(interviewId);
+
+        if (!interview) {
+            return res.status(404).json({ error: 'Interview not found' });
+        }
+
+        interview.startTime = startTime || interview.startTime;
+        interview.endTime = endTime || interview.endTime;
+        interview.summary = summary || interview.summary;
+        interview.description = description || interview.description;
+
+        await interview.save();
+
+        const user = await User.findById(interview.scheduledBy);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
+        oauth2Client.setCredentials({ access_token: user.accessToken });
+
+        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        const event = {
+            summary: interview.summary,
+            description: interview.description,
+            start: { dateTime: interview.startTime },
+            end: { dateTime: interview.endTime },
+        };
+
+        await calendar.events.patch({
+            calendarId: 'primary',
+            eventId: interview.calendarEventId,
+            resource: event,
+            sendUpdates: 'all',
+        });
+
+        res.status(200).json(interview);
+    } catch (error) {
+        console.error('Error rescheduling interview:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
+const cancelInterview = async (req, res) => {
+    const { interviewId } = req.params;
+
+    try {
+        const interview = await Interview.findById(interviewId);
+
+        if (!interview) {
+            return res.status(404).json({ error: 'Interview not found' });
+        }
+
+        const user = await User.findById(interview.scheduledBy);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const oauth2Client = new google.auth.OAuth2(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
+        oauth2Client.setCredentials({ access_token: user.accessToken });
+
+        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+
+        await calendar.events.delete({
+            calendarId: 'primary',
+            eventId: interview.calendarEventId,
+            sendUpdates: 'all',
+        });
+
+        await Interview.findByIdAndDelete(interviewId);
+
+        res.status(200).json({ message: 'Interview canceled successfully' });
+    } catch (error) {
+        console.error('Error canceling interview:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
 
 module.exports = {
     scheduleInterview,
+    getInterviewsByUser,
+    rescheduleInterview,
+    cancelInterview
 };
