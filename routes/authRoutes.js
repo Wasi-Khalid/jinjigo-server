@@ -5,7 +5,16 @@ const passport = require('passport');
 
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'], accessType: 'offline', prompt: 'consent' }));
+router.get('/google', passport.authenticate('google', { scope:
+        [
+            'profile',
+            'email', 'https://www.googleapis.com/auth/calendar',
+            'https://www.googleapis.com/auth/calendar.events',
+            'https://www.googleapis.com/auth/calendar.events.owned'
+        ],
+    accessType: 'offline',
+    prompt: 'consent' }
+));
 router.get('/google/callback', passport.authenticate('google', { failureRedirect: '/' }), authController.googleCallback);
 router.get('/logout', authController.logout);
 router.post('/validate-google-token', authController.authenticateUserWithToken);
