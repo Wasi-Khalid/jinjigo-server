@@ -157,8 +157,7 @@ const getInterviewsByUser = async (req, res) => {
 };
 
 const rescheduleInterview = async (req, res) => {
-    const { interviewId } = req.params;
-    const { startTime, endTime, summary, description } = req.body;
+    const { interviewId, startTime, endTime, summary, description } = req.body;
 
     try {
         const interview = await Interview.findById(interviewId);
@@ -209,7 +208,7 @@ const rescheduleInterview = async (req, res) => {
 };
 
 const cancelInterview = async (req, res) => {
-    const { interviewId } = req.params;
+    const { interviewId } = req.body;
 
     try {
         const interview = await Interview.findById(interviewId);
@@ -247,9 +246,51 @@ const cancelInterview = async (req, res) => {
     }
 };
 
+const collectFeedback = async (req, res) => {
+    const { interviewId, feedback } = req.body;
+
+    try {
+        const interview = await Interview.findById(interviewId);
+
+        if (!interview) {
+            return res.status(404).json({ error: 'Interview not found' });
+        }
+
+        interview.feedback.push(feedback);
+        await interview.save();
+
+        res.status(200).json(interview);
+    } catch (error) {
+        console.error('Error collecting feedback:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
+const nextActionDecision = async (req, res) => {
+    const { interviewId, nextAction } = req.body;
+
+    try {
+        const interview = await Interview.findById(interviewId);
+
+        if (!interview) {
+            return res.status(404).json({ error: 'Interview not found' });
+        }
+
+        interview.nextAction = nextAction;
+        await interview.save();
+
+        res.status(200).json(interview);
+    } catch (error) {
+        console.error('Error deciding next action:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
 module.exports = {
     scheduleInterview,
     getInterviewsByUser,
     rescheduleInterview,
-    cancelInterview
+    cancelInterview,
+    collectFeedback,
+    nextActionDecision
 };

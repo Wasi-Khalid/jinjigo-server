@@ -17,7 +17,9 @@ const interviewSchema = new mongoose.Schema({
     escalationEmail: { type: String, required: true },
     escalationDeadline: { type: Number, required: true },
     calendarEventId: { type: String },
-    scheduledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+    scheduledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    feedback: [{ type: String }],
+    nextAction: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Interview', interviewSchema);
