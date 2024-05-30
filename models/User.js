@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema({
     googleId: { type: String },
     accessToken: { type: String },
     refreshToken: { type: String },
+    role: { type: String, default: 'user' },
 });
 
 const User = mongoose.model('User', userSchema);

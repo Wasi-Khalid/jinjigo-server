@@ -7,7 +7,6 @@ const authRoutes = require('./routes/authRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
 const db = require('./database/db');
 
-// Initialize and configure Passport
 require('./config/passport');
 
 db.connect();

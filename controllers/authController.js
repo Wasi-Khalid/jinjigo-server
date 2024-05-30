@@ -15,7 +15,7 @@ async function signup(req, res) {
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = await User.create({ username, email, password: hashedPassword });
         const token = generateToken(user);
-        res.json({ token, user: { _id: user._id, username: user.username, email: user.email } });
+        res.json({ token, user: { _id: user._id, username: user.username, email: user.email, role: user.role } });
     } catch (error) {
         console.error('Error signing up:', error);
         res.status(500).json({ error: 'Internal Server Error' });
@@ -34,7 +34,7 @@ async function login(req, res) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
         const token = generateToken(user);
-        res.json({ token, user: { _id: user._id, username: user.username, email: user.email } });
+        res.json({ token, user: { _id: user._id, username: user.username, email: user.email, role: user.role } });
     } catch (error) {
         console.error('Error logging in:', error);
         res.status(500).json({ error: 'Internal Server Error' });
@@ -66,11 +66,41 @@ const authenticateUserWithToken = async (req, res) => {
         if (!user) {
             return res.status(401).json({ error: 'Invalid token' });
         }
-        res.json({user});
+        res.json({ user });
     } catch (error) {
         console.error('Error validating token:', error);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 };
 
-module.exports = { signup, login, loginWithGoogle, googleCallback, logout, authenticateUserWithToken };
+const updateUser = async (req, res) => {
+    const { username, role } = req.body;
+    try {
+        const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        if (username) user.username = username;
+        if (role) user.role = role;
+        await user.save();
+        res.json({ user: { _id: user._id, username: user.username, email: user.email, role: user.role } });
+    } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
+async function getUser(req, res) {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        res.json({ user: { _id: user._id, username: user.username, email: user.email, role: user.role } });
+    } catch (error) {
+        console.error('Error fetching user:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+}
+
+module.exports = { signup, login, loginWithGoogle, googleCallback, logout, authenticateUserWithToken, updateUser, getUser };
