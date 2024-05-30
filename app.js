@@ -5,6 +5,7 @@ const session = require('express-session');
 const passport = require('passport');
 const authRoutes = require('./routes/authRoutes');
 const calendarRoutes = require('./routes/calendarRoutes');
+const interviewRoutes = require('./routes/interviewRoutes');
 const db = require('./database/db');
 
 require('./config/passport');
@@ -34,6 +35,7 @@ app.get('/', (req, res) => {
 
 app.use('/auth', authRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/interviews', interviewRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

@@ -1,9 +1,6 @@
 const bcrypt = require('bcrypt');
-const User = require('../models/User');
-const passport = require('passport');
 const jwt = require('jsonwebtoken');
-const { OAuth2Client } = require('google-auth-library');
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const User = require('../models/User');
 
 const generateToken = (user) => {
     return jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
@@ -40,10 +37,6 @@ async function login(req, res) {
         res.status(500).json({ error: 'Internal Server Error' });
     }
 }
-
-const loginWithGoogle = (req, res, next) => {
-    passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
-};
 
 const googleCallback = async (req, res) => {
     const user = req.user;
@@ -103,4 +96,4 @@ async function getUser(req, res) {
     }
 }
 
-module.exports = { signup, login, loginWithGoogle, googleCallback, logout, authenticateUserWithToken, updateUser, getUser };
+module.exports = { signup, login, googleCallback, logout, authenticateUserWithToken, updateUser, getUser };

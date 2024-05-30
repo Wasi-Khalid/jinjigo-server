@@ -5,7 +5,7 @@ const passport = require('passport');
 
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
-router.get('/google', authController.loginWithGoogle);
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'], accessType: 'offline', prompt: 'consent' }));
 router.get('/google/callback', passport.authenticate('google', { failureRedirect: '/' }), authController.googleCallback);
 router.get('/logout', authController.logout);
 router.post('/validate-google-token', authController.authenticateUserWithToken);

@@ -10,7 +10,8 @@ passport.use(new GoogleStrategy({
     callbackURL: process.env.NODE_ENV === 'production'
         ? 'https://jinjigo-server.onrender.com/auth/google/callback'
         : 'http://localhost:3000/auth/google/callback',
-}, async (accessToken, refreshToken, profile, done) => {
+    passReqToCallback: true
+}, async (req, accessToken, refreshToken, profile, done) => {
     try {
         let user = await User.findOne({ googleId: profile.id });
 
@@ -19,9 +20,16 @@ passport.use(new GoogleStrategy({
                 googleId: profile.id,
                 username: profile.displayName,
                 email: profile.emails[0].value,
+                accessToken,
+                refreshToken
             });
             await user.save();
+        } else {
+            user.accessToken = accessToken;
+            user.refreshToken = refreshToken;
+            await user.save();
         }
+
         return done(null, user);
     } catch (err) {
         return done(err, null);
