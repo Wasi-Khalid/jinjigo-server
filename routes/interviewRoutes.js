@@ -9,7 +9,10 @@ const {
     getInterviewStatus,
     updateCandidateResponse,
     collectFeedback,
-    nextActionDecision
+    nextActionDecision,
+    proposeNewDates,
+    confirmFinalDate,
+    getAllInterviews
 } = require('../controllers/interviewController');
 const router = express.Router();
 
@@ -22,5 +25,8 @@ router.post('/status', passport.authenticate('jwt', { session: false }), getInte
 router.post('/response', passport.authenticate('jwt', { session: false }), updateCandidateResponse);
 router.post('/feedback', passport.authenticate('jwt', { session: false }), collectFeedback);
 router.post('/next-action', passport.authenticate('jwt', { session: false }), nextActionDecision);
+router.post('/propose-dates', passport.authenticate('jwt', { session: false }), proposeNewDates);
+router.post('/confirm-final-date', passport.authenticate('jwt', { session: false }), confirmFinalDate);
+router.get('/all-interviews', passport.authenticate('jwt', { session: false }), getAllInterviews);
 
 module.exports = router;

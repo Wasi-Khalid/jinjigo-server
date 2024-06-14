@@ -1,7 +1,29 @@
 const { google } = require('googleapis');
 const User = require('../models/User');
 const Interview = require('../models/Interview');
+const EmailTemplate = require('../models/EmailTemplate');
 const OAuth2Client = google.auth.OAuth2;
+
+const sendEmail = async (authClient, to, subject, body) => {
+    const gmail = google.gmail({ version: 'v1', auth: authClient });
+    const email = [
+        `To: ${to}`,
+        'Content-Type: text/html; charset=UTF-8',
+        'MIME-Version: 1.0',
+        `Subject: ${subject}`,
+        '',
+        body
+    ].join('\n');
+
+    const encodedMessage = Buffer.from(email).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+    await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: {
+            raw: encodedMessage
+        }
+    });
+};
 
 const refreshAccessToken = async (user) => {
     const oauth2Client = new OAuth2Client(
@@ -20,7 +42,7 @@ const refreshAccessToken = async (user) => {
     return credentials.access_token;
 };
 
-const scheduleInterview = async (req, res) => {
+const initializeInterview = async (req, res) => {
     if (!req.user) {
         return res.status(401).send('Not authenticated');
     }
@@ -45,18 +67,28 @@ const scheduleInterview = async (req, res) => {
             interviewType,
             interviewPosition,
             interviewDuration,
-            startTime,
-            endTime,
             summary,
             description,
-            candidateEmailTemplate,
-            interviewerEmailTemplate,
+            candidateEmailTemplateId,
+            interviewerEmailTemplateId,
             feedbackFile,
             feedbackDeadline,
+            feedbackNotificationFrequency,
             escalationEmail,
             escalationDeadline,
-            notes
+            notes,
+            scheduleOrder,
+            schedulingMethod,
+            startTime,
+            endTime
         } = req.body;
+
+        const candidateEmailTemplate = await EmailTemplate.findById(candidateEmailTemplateId);
+        const interviewerEmailTemplate = await EmailTemplate.findById(interviewerEmailTemplateId);
+
+        if (!candidateEmailTemplate || !interviewerEmailTemplate) {
+            return res.status(404).json({ error: 'Email template not found' });
+        }
 
         const interview = new Interview({
             hr: user._id,
@@ -69,18 +101,23 @@ const scheduleInterview = async (req, res) => {
             interviewType,
             interviewPosition,
             interviewDuration,
-            startTime,
-            endTime,
+            startTime: schedulingMethod === 'fixed' ? startTime : null,
+            endTime: schedulingMethod === 'fixed' ? endTime : null,
             summary,
             description,
-            candidateEmailTemplate,
-            interviewerEmailTemplate,
+            candidateEmailTemplate: candidateEmailTemplate._id,
+            interviewerEmailTemplate: interviewerEmailTemplate._id,
             feedbackFile,
             feedbackDeadline,
+            feedbackNotificationFrequency,
             escalationEmail,
             escalationDeadline,
-            scheduledBy: user._id,
-            notes
+            notes,
+            scheduleOrder,
+            schedulingMethod,
+            proposedDates: schedulingMethod === 'flexible' ? [] : [startTime],
+            status: schedulingMethod === 'fixed' ? 'proposed' : 'initialized',
+            scheduledBy: user._id
         });
 
         await interview.save();
@@ -94,27 +131,24 @@ const scheduleInterview = async (req, res) => {
         oauth2Client.setCredentials({ access_token: accessToken });
 
         try {
-            const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-            const event = {
-                summary,
-                description,
-                start: { dateTime: startTime },
-                end: { dateTime: endTime },
-                attendees: [
-                    { email: user.email },
-                    { email: candidateEmail },
-                    ...interviewerEmails.map(email => ({ email }))
-                ],
-            };
+            if (schedulingMethod === 'flexible') {
+                const emailSubject = candidateEmailTemplate.title;
+                const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
-            const response = await calendar.events.insert({
-                calendarId: 'primary',
-                resource: event,
-                sendUpdates: 'all',
-            });
+                await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
+            } else {
+                for (const email of interviewerEmails) {
+                    const interviewerEmailSubject = interviewerEmailTemplate.title;
+                    const interviewerEmailBody = interviewerEmailTemplate.content.replace('{interviewerEmail}', email).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
-            interview.calendarEventId = response.data.id;
-            await interview.save();
+                    await sendEmail(oauth2Client, email, interviewerEmailSubject, interviewerEmailBody);
+                }
+
+                const candidateEmailSubject = candidateEmailTemplate.title;
+                const candidateEmailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
+
+                await sendEmail(oauth2Client, candidateEmail, candidateEmailSubject, candidateEmailBody);
+            }
 
             res.status(201).send(interview);
         } catch (error) {
@@ -125,27 +159,24 @@ const scheduleInterview = async (req, res) => {
                 accessToken = await refreshAccessToken(user);
                 oauth2Client.setCredentials({ access_token: accessToken });
 
-                const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-                const event = {
-                    summary,
-                    description,
-                    start: { dateTime: startTime },
-                    end: { dateTime: endTime },
-                    attendees: [
-                        { email: user.email },
-                        { email: candidateEmail },
-                        ...interviewerEmails.map(email => ({ email }))
-                    ],
-                };
+                if (schedulingMethod === 'flexible') {
+                    const emailSubject = candidateEmailTemplate.title;
+                    const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
-                const response = await calendar.events.insert({
-                    calendarId: 'primary',
-                    resource: event,
-                    sendUpdates: 'all',
-                });
+                    await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
+                } else {
+                    for (const email of interviewerEmails) {
+                        const interviewerEmailSubject = interviewerEmailTemplate.title;
+                        const interviewerEmailBody = interviewerEmailTemplate.content.replace('{interviewerEmail}', email).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
-                interview.calendarEventId = response.data.id;
-                await interview.save();
+                        await sendEmail(oauth2Client, email, interviewerEmailSubject, interviewerEmailBody);
+                    }
+
+                    const candidateEmailSubject = candidateEmailTemplate.title;
+                    const candidateEmailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
+
+                    await sendEmail(oauth2Client, candidateEmail, candidateEmailSubject, candidateEmailBody);
+                }
 
                 res.status(201).send(interview);
             } else {
@@ -153,7 +184,81 @@ const scheduleInterview = async (req, res) => {
             }
         }
     } catch (error) {
-        res.status(500).send('Error scheduling interview');
+        console.error('Error initializing interview:', error);
+        res.status(500).send('Error initializing interview');
+    }
+};
+
+const proposeNewDates = async (req, res) => {
+    const { interviewId, proposedDates } = req.body;
+
+    try {
+        const interview = await Interview.findById(interviewId);
+        if (!interview) {
+            return res.status(404).json({ error: 'Interview not found' });
+        }
+
+        interview.proposedDates = proposedDates;
+        interview.status = 'proposed';
+        await interview.save();
+
+        res.status(200).json(interview);
+    } catch (error) {
+        console.error('Error proposing new dates:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
+const confirmFinalDate = async (req, res) => {
+    const { interviewId, finalizedDate } = req.body;
+
+    try {
+        const interview = await Interview.findById(interviewId);
+        if (!interview) {
+            return res.status(404).json({ error: 'Interview not found' });
+        }
+
+        interview.startTime = finalizedDate;
+        interview.endTime = new Date(new Date(finalizedDate).getTime() + interview.interviewDuration * 60000); // Assuming interviewDuration is in minutes
+        interview.status = 'finalized';
+        await interview.save();
+
+        const user = await User.findById(interview.scheduledBy);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        let accessToken = user.accessToken;
+        const oauth2Client = new OAuth2Client(
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_CLIENT_SECRET,
+            process.env.GOOGLE_REDIRECT_URI
+        );
+        oauth2Client.setCredentials({ access_token: accessToken });
+
+        const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+        const event = {
+            summary: interview.summary,
+            description: interview.description,
+            start: { dateTime: interview.startTime },
+            end: { dateTime: interview.endTime },
+            attendees: [
+                { email: user.email },
+                { email: interview.candidateEmail },
+                ...interview.interviewerEmails.map(email => ({ email }))
+            ],
+        };
+
+        await calendar.events.insert({
+            calendarId: 'primary',
+            resource: event,
+            sendUpdates: 'all',
+        });
+
+        res.status(200).json(interview);
+    } catch (error) {
+        console.error('Error confirming final date:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
     }
 };
 
@@ -343,8 +448,18 @@ const nextActionDecision = async (req, res) => {
     }
 };
 
+const getAllInterviews = async (req, res) => {
+    try {
+        const interviews = await Interview.find({}).populate('hr', 'username email');
+        res.status(200).json(interviews);
+    } catch (error) {
+        console.error('Error fetching interviews:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+};
+
 module.exports = {
-    scheduleInterview,
+    scheduleInterview: initializeInterview,
     rescheduleInterview,
     cancelInterview,
     getInterviewsByUser,
@@ -352,5 +467,8 @@ module.exports = {
     getInterviewStatus,
     updateCandidateResponse,
     collectFeedback,
-    nextActionDecision
+    nextActionDecision,
+    proposeNewDates,
+    confirmFinalDate,
+    getAllInterviews
 };
