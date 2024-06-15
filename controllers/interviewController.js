@@ -61,9 +61,9 @@ const initializeInterview = async (req, res) => {
             candidateName,
             candidateEmail,
             candidatePosition,
-            currentEmployer,
-            intervieweeInfoURL,
-            interviewerEmails,
+            candidateCurrentEmployer,
+            candidateInformationUrl,
+            interviewers,
             interviewType,
             interviewPosition,
             interviewDuration,
@@ -77,10 +77,11 @@ const initializeInterview = async (req, res) => {
             escalationEmail,
             escalationDeadline,
             notes,
-            scheduleOrder,
-            schedulingMethod,
-            startTime,
-            endTime
+            orderOfSchedule,
+            interviewSchedulingMethod,
+            initialDateRange,
+            interviewStartTime,
+            resume
         } = req.body;
 
         const candidateEmailTemplate = await EmailTemplate.findById(candidateEmailTemplateId);
@@ -95,14 +96,13 @@ const initializeInterview = async (req, res) => {
             candidateName,
             candidateEmail,
             candidatePosition,
-            currentEmployer,
-            intervieweeInfoURL,
-            interviewerEmails,
+            candidateCurrentEmployer,
+            candidateInformationUrl,
+            interviewers,
             interviewType,
             interviewPosition,
             interviewDuration,
-            startTime: schedulingMethod === 'fixed' ? startTime : null,
-            endTime: schedulingMethod === 'fixed' ? endTime : null,
+            interviewStartTime: interviewSchedulingMethod === 'fixed' ? new Date(interviewStartTime) : null,
             summary,
             description,
             candidateEmailTemplate: candidateEmailTemplate._id,
@@ -113,11 +113,13 @@ const initializeInterview = async (req, res) => {
             escalationEmail,
             escalationDeadline,
             notes,
-            scheduleOrder,
-            schedulingMethod,
-            proposedDates: schedulingMethod === 'flexible' ? [] : [startTime],
-            status: schedulingMethod === 'fixed' ? 'proposed' : 'initialized',
-            scheduledBy: user._id
+            orderOfSchedule,
+            interviewSchedulingMethod,
+            initialDateRange: interviewSchedulingMethod === 'flexible' ? { from: new Date(initialDateRange.from), to: new Date(initialDateRange.to) } : null,
+            proposedDates: interviewSchedulingMethod === 'flexible' ? [] : [new Date(interviewStartTime)],
+            status: interviewSchedulingMethod === 'fixed' ? 'proposed' : 'initialized',
+            scheduledBy: user._id,
+            resume
         });
 
         await interview.save();
@@ -131,13 +133,13 @@ const initializeInterview = async (req, res) => {
         oauth2Client.setCredentials({ access_token: accessToken });
 
         try {
-            if (schedulingMethod === 'flexible') {
+            if (interviewSchedulingMethod === 'flexible') {
                 const emailSubject = candidateEmailTemplate.title;
                 const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
                 await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
             } else {
-                for (const email of interviewerEmails) {
+                for (const email of interviewers) {
                     const interviewerEmailSubject = interviewerEmailTemplate.title;
                     const interviewerEmailBody = interviewerEmailTemplate.content.replace('{interviewerEmail}', email).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
@@ -159,13 +161,13 @@ const initializeInterview = async (req, res) => {
                 accessToken = await refreshAccessToken(user);
                 oauth2Client.setCredentials({ access_token: accessToken });
 
-                if (schedulingMethod === 'flexible') {
+                if (interviewSchedulingMethod === 'flexible') {
                     const emailSubject = candidateEmailTemplate.title;
                     const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
                     await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
                 } else {
-                    for (const email of interviewerEmails) {
+                    for (const email of interviewers) {
                         const interviewerEmailSubject = interviewerEmailTemplate.title;
                         const interviewerEmailBody = interviewerEmailTemplate.content.replace('{interviewerEmail}', email).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
