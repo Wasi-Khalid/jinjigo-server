@@ -67,11 +67,8 @@ const initializeInterview = async (req, res) => {
             interviewType,
             interviewPosition,
             interviewDuration,
-            summary,
-            description,
             candidateEmailTemplateId,
             interviewerEmailTemplateId,
-            feedbackFile,
             feedbackDeadline,
             feedbackNotificationFrequency,
             escalationEmail,
@@ -103,11 +100,8 @@ const initializeInterview = async (req, res) => {
             interviewPosition,
             interviewDuration,
             interviewStartTime: interviewSchedulingMethod === 'fixed' ? new Date(interviewStartTime) : null,
-            summary,
-            description,
             candidateEmailTemplate: candidateEmailTemplate._id,
             interviewerEmailTemplate: interviewerEmailTemplate._id,
-            feedbackFile,
             feedbackDeadline,
             feedbackNotificationFrequency,
             escalationEmail,
@@ -138,6 +132,13 @@ const initializeInterview = async (req, res) => {
                 const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
                 await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
+
+                // Send to the first interviewer in the order
+                const firstInterviewerEmail = interviewers[0];
+                const firstInterviewerSubject = interviewerEmailTemplate.title;
+                const firstInterviewerBody = interviewerEmailTemplate.content.replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
+
+                await sendEmail(oauth2Client, firstInterviewerEmail, firstInterviewerSubject, firstInterviewerBody);
             } else {
                 for (const email of interviewers) {
                     const interviewerEmailSubject = interviewerEmailTemplate.title;
@@ -166,6 +167,12 @@ const initializeInterview = async (req, res) => {
                     const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
 
                     await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
+
+                    const firstInterviewerEmail = interviewers[0];
+                    const firstInterviewerSubject = interviewerEmailTemplate.title;
+                    const firstInterviewerBody = interviewerEmailTemplate.content.replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
+
+                    await sendEmail(oauth2Client, firstInterviewerEmail, firstInterviewerSubject, firstInterviewerBody);
                 } else {
                     for (const email of interviewers) {
                         const interviewerEmailSubject = interviewerEmailTemplate.title;
@@ -200,9 +207,64 @@ const proposeNewDates = async (req, res) => {
             return res.status(404).json({ error: 'Interview not found' });
         }
 
-        interview.proposedDates = proposedDates;
+        interview.proposedDates.push(...proposedDates);
         interview.status = 'proposed';
         await interview.save();
+
+        // Send email to the next participant in the order
+        const nextParticipantIndex = interview.proposedDates.length;
+        if (nextParticipantIndex < interview.orderOfSchedule.length) {
+            const nextParticipantEmail = interview.interviewers[nextParticipantIndex - 1]; // -1 because orderOfSchedule includes candidate first
+            const user = await User.findById(interview.scheduledBy);
+            if (!user) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+
+            let accessToken = user.accessToken;
+            const oauth2Client = new OAuth2Client(
+                process.env.GOOGLE_CLIENT_ID,
+                process.env.GOOGLE_CLIENT_SECRET,
+                process.env.GOOGLE_REDIRECT_URI
+            );
+            oauth2Client.setCredentials({ access_token: accessToken });
+
+            const emailTemplate = await EmailTemplate.findById(interview.interviewerEmailTemplate);
+            const emailSubject = emailTemplate.title;
+            const emailBody = emailTemplate.content.replace('{interviewType}', interview.interviewType).replace('{interviewPosition}', interview.interviewPosition);
+
+            await sendEmail(oauth2Client, nextParticipantEmail, emailSubject, emailBody);
+        } else {
+            interview.status = 'finalized';
+            await interview.save();
+
+            // Send confirmation email to all participants
+            const user = await User.findById(interview.scheduledBy);
+            if (!user) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+
+            let accessToken = user.accessToken;
+            const oauth2Client = new OAuth2Client(
+                process.env.GOOGLE_CLIENT_ID,
+                process.env.GOOGLE_CLIENT_SECRET,
+                process.env.GOOGLE_REDIRECT_URI
+            );
+            oauth2Client.setCredentials({ access_token: accessToken });
+
+            const emailTemplate = await EmailTemplate.findById(interview.interviewerEmailTemplate);
+            const emailSubject = emailTemplate.title;
+            const emailBody = emailTemplate.content.replace('{interviewType}', interview.interviewType).replace('{interviewPosition}', interview.interviewPosition);
+
+            for (const email of interview.interviewers) {
+                await sendEmail(oauth2Client, email, emailSubject, emailBody);
+            }
+
+            const candidateEmailTemplate = await EmailTemplate.findById(interview.candidateEmailTemplate);
+            const candidateEmailSubject = candidateEmailTemplate.title;
+            const candidateEmailBody = candidateEmailTemplate.content.replace('{candidateName}', interview.candidateName).replace('{interviewType}', interview.interviewType).replace('{interviewPosition}', interview.interviewPosition);
+
+            await sendEmail(oauth2Client, interview.candidateEmail, candidateEmailSubject, candidateEmailBody);
+        }
 
         res.status(200).json(interview);
     } catch (error) {
@@ -220,7 +282,7 @@ const confirmFinalDate = async (req, res) => {
             return res.status(404).json({ error: 'Interview not found' });
         }
 
-        interview.startTime = finalizedDate;
+        interview.startTime = new Date(finalizedDate);
         interview.endTime = new Date(new Date(finalizedDate).getTime() + interview.interviewDuration * 60000); // Assuming interviewDuration is in minutes
         interview.status = 'finalized';
         await interview.save();
@@ -240,14 +302,14 @@ const confirmFinalDate = async (req, res) => {
 
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
         const event = {
-            summary: interview.summary,
-            description: interview.description,
+            summary: interview.interviewType,
+            description: `Interview for the position of ${interview.interviewPosition}`,
             start: { dateTime: interview.startTime },
             end: { dateTime: interview.endTime },
             attendees: [
                 { email: user.email },
                 { email: interview.candidateEmail },
-                ...interview.interviewerEmails.map(email => ({ email }))
+                ...interview.interviewers.map(email => ({ email }))
             ],
         };
 
@@ -265,7 +327,7 @@ const confirmFinalDate = async (req, res) => {
 };
 
 const rescheduleInterview = async (req, res) => {
-    const { interviewId, startTime, endTime, summary, description } = req.body;
+    const { interviewId, startTime, endTime } = req.body;
 
     try {
         const interview = await Interview.findById(interviewId);
@@ -276,8 +338,6 @@ const rescheduleInterview = async (req, res) => {
 
         interview.startTime = startTime || interview.startTime;
         interview.endTime = endTime || interview.endTime;
-        interview.summary = summary || interview.summary;
-        interview.description = description || interview.description;
 
         await interview.save();
 
@@ -295,8 +355,8 @@ const rescheduleInterview = async (req, res) => {
 
         const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
         const event = {
-            summary: interview.summary,
-            description: interview.description,
+            summary: interview.interviewType,
+            description: `Interview for the position of ${interview.interviewPosition}`,
             start: { dateTime: interview.startTime },
             end: { dateTime: interview.endTime },
         };
@@ -444,7 +504,7 @@ const nextActionDecision = async (req, res) => {
         interview.nextAction = nextAction;
         await interview.save();
 
-        res.status(200).json(interview);
+        res.status200.json(interview);
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
     }
@@ -462,6 +522,8 @@ const getAllInterviews = async (req, res) => {
 
 module.exports = {
     scheduleInterview: initializeInterview,
+    proposeNewDates,
+    confirmFinalDate,
     rescheduleInterview,
     cancelInterview,
     getInterviewsByUser,
@@ -470,7 +532,5 @@ module.exports = {
     updateCandidateResponse,
     collectFeedback,
     nextActionDecision,
-    proposeNewDates,
-    confirmFinalDate,
     getAllInterviews
 };
