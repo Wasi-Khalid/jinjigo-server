@@ -2,6 +2,8 @@ const express = require('express');
 const passport = require('passport');
 const {
     scheduleInterview,
+    proposeNewDates,
+    confirmFinalDate,
     rescheduleInterview,
     cancelInterview,
     getInterviewsByUser,
@@ -10,8 +12,6 @@ const {
     updateCandidateResponse,
     collectFeedback,
     nextActionDecision,
-    proposeNewDates,
-    confirmFinalDate,
     getAllInterviews
 } = require('../controllers/interviewController');
 const router = express.Router();

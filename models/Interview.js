@@ -30,7 +30,12 @@ const interviewSchema = new mongoose.Schema({
     status: { type: String, enum: ['initialized', 'proposed', 'finalized', 'conducted', 'feedback_collected'], default: 'initialized' },
     calendarEventId: { type: String },
     scheduledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    resume: [{ type: String }]
+    resume: [{ type: String }],
+    feedback: [{
+        interviewerEmail: { type: String, required: true },
+        comments: { type: String, required: true },
+        rating: { type: Number, required: true, min: 1, max: 5 }
+    }]
 }, { timestamps: true });
 
 module.exports = mongoose.model('Interview', interviewSchema);

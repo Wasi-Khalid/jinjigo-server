@@ -99,7 +99,8 @@ const initializeInterview = async (req, res) => {
             interviewType,
             interviewPosition,
             interviewDuration,
-            interviewStartTime: interviewSchedulingMethod === 'fixed' ? new Date(interviewStartTime) : null,
+            startTime: interviewSchedulingMethod === 'fixed' ? new Date(interviewStartTime) : null,
+            endTime: interviewSchedulingMethod === 'fixed' ? new Date(new Date(interviewStartTime).getTime() + interviewDuration * 60000) : null,
             candidateEmailTemplate: candidateEmailTemplate._id,
             interviewerEmailTemplate: interviewerEmailTemplate._id,
             feedbackDeadline,
@@ -107,10 +108,10 @@ const initializeInterview = async (req, res) => {
             escalationEmail,
             escalationDeadline,
             notes,
-            orderOfSchedule,
+            orderOfSchedule: [...orderOfSchedule, candidateEmail],
             interviewSchedulingMethod,
             initialDateRange: interviewSchedulingMethod === 'flexible' ? { from: new Date(initialDateRange.from), to: new Date(initialDateRange.to) } : null,
-            proposedDates: interviewSchedulingMethod === 'flexible' ? [] : [new Date(interviewStartTime)],
+            proposedDates: [],
             status: interviewSchedulingMethod === 'fixed' ? 'proposed' : 'initialized',
             scheduledBy: user._id,
             resume
@@ -127,13 +128,12 @@ const initializeInterview = async (req, res) => {
         oauth2Client.setCredentials({ access_token: accessToken });
 
         try {
+            const emailSubject = candidateEmailTemplate.title;
+            const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
+
+            await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
+
             if (interviewSchedulingMethod === 'flexible') {
-                const emailSubject = candidateEmailTemplate.title;
-                const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
-
-                await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
-
-                // Send to the first interviewer in the order
                 const firstInterviewerEmail = interviewers[0];
                 const firstInterviewerSubject = interviewerEmailTemplate.title;
                 const firstInterviewerBody = interviewerEmailTemplate.content.replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
@@ -146,11 +146,6 @@ const initializeInterview = async (req, res) => {
 
                     await sendEmail(oauth2Client, email, interviewerEmailSubject, interviewerEmailBody);
                 }
-
-                const candidateEmailSubject = candidateEmailTemplate.title;
-                const candidateEmailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
-
-                await sendEmail(oauth2Client, candidateEmail, candidateEmailSubject, candidateEmailBody);
             }
 
             res.status(201).send(interview);
@@ -162,12 +157,12 @@ const initializeInterview = async (req, res) => {
                 accessToken = await refreshAccessToken(user);
                 oauth2Client.setCredentials({ access_token: accessToken });
 
+                const emailSubject = candidateEmailTemplate.title;
+                const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
+
+                await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
+
                 if (interviewSchedulingMethod === 'flexible') {
-                    const emailSubject = candidateEmailTemplate.title;
-                    const emailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
-
-                    await sendEmail(oauth2Client, candidateEmail, emailSubject, emailBody);
-
                     const firstInterviewerEmail = interviewers[0];
                     const firstInterviewerSubject = interviewerEmailTemplate.title;
                     const firstInterviewerBody = interviewerEmailTemplate.content.replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
@@ -180,11 +175,6 @@ const initializeInterview = async (req, res) => {
 
                         await sendEmail(oauth2Client, email, interviewerEmailSubject, interviewerEmailBody);
                     }
-
-                    const candidateEmailSubject = candidateEmailTemplate.title;
-                    const candidateEmailBody = candidateEmailTemplate.content.replace('{candidateName}', candidateName).replace('{interviewType}', interviewType).replace('{interviewPosition}', interviewPosition);
-
-                    await sendEmail(oauth2Client, candidateEmail, candidateEmailSubject, candidateEmailBody);
                 }
 
                 res.status(201).send(interview);
@@ -207,14 +197,22 @@ const proposeNewDates = async (req, res) => {
             return res.status(404).json({ error: 'Interview not found' });
         }
 
-        interview.proposedDates.push(...proposedDates);
+        const validProposedDates = proposedDates.filter(date => {
+            const proposedDate = new Date(date);
+            return proposedDate >= new Date(interview.initialDateRange.from) && proposedDate <= new Date(interview.initialDateRange.to);
+        });
+
+        if (validProposedDates.length === 0) {
+            return res.status(400).json({ error: 'No valid proposed dates within the available range' });
+        }
+
+        interview.proposedDates.push(...validProposedDates);
         interview.status = 'proposed';
         await interview.save();
 
-        // Send email to the next participant in the order
         const nextParticipantIndex = interview.proposedDates.length;
         if (nextParticipantIndex < interview.orderOfSchedule.length) {
-            const nextParticipantEmail = interview.interviewers[nextParticipantIndex - 1]; // -1 because orderOfSchedule includes candidate first
+            const nextParticipantEmail = interview.orderOfSchedule[nextParticipantIndex];
             const user = await User.findById(interview.scheduledBy);
             if (!user) {
                 return res.status(404).json({ error: 'User not found' });
@@ -237,7 +235,6 @@ const proposeNewDates = async (req, res) => {
             interview.status = 'finalized';
             await interview.save();
 
-            // Send confirmation email to all participants
             const user = await User.findById(interview.scheduledBy);
             if (!user) {
                 return res.status(404).json({ error: 'User not found' });
@@ -266,10 +263,10 @@ const proposeNewDates = async (req, res) => {
             await sendEmail(oauth2Client, interview.candidateEmail, candidateEmailSubject, candidateEmailBody);
         }
 
-        res.status(200).json(interview);
+        res.status(200).json({ message: 'Proposed dates added', interview });
     } catch (error) {
         console.error('Error proposing new dates:', error);
-        res.status(500).json({ error: 'Internal Server Error' });
+        res.status(500).send('Error proposing new dates');
     }
 };
 
@@ -283,7 +280,7 @@ const confirmFinalDate = async (req, res) => {
         }
 
         interview.startTime = new Date(finalizedDate);
-        interview.endTime = new Date(new Date(finalizedDate).getTime() + interview.interviewDuration * 60000); // Assuming interviewDuration is in minutes
+        interview.endTime = new Date(new Date(finalizedDate).getTime() + interview.interviewDuration * 60000);
         interview.status = 'finalized';
         await interview.save();
 
@@ -473,7 +470,7 @@ const updateCandidateResponse = async (req, res) => {
 };
 
 const collectFeedback = async (req, res) => {
-    const { interviewId, feedback } = req.body;
+    const { interviewId, interviewerEmail, comments, rating } = req.body;
 
     try {
         const interview = await Interview.findById(interviewId);
@@ -482,7 +479,7 @@ const collectFeedback = async (req, res) => {
             return res.status(404).json({ error: 'Interview not found' });
         }
 
-        interview.feedback.push(feedback);
+        interview.feedback.push({ interviewerEmail, comments, rating });
         await interview.save();
 
         res.status(200).json(interview);
@@ -504,7 +501,7 @@ const nextActionDecision = async (req, res) => {
         interview.nextAction = nextAction;
         await interview.save();
 
-        res.status200.json(interview);
+        res.status(200).json(interview);
     } catch (error) {
         res.status(500).json({ error: 'Internal Server Error' });
     }
