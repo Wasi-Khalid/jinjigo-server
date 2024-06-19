@@ -41,7 +41,7 @@ async function login(req, res) {
 const googleCallback = async (req, res) => {
     const user = req.user;
     const token = generateToken(user);
-    res.redirect(`http://localhost:5174/login?token=${token}`);
+    res.redirect(`http://localhost:5173/login?token=${token}`);
 };
 
 const logout = (req, res) => {
